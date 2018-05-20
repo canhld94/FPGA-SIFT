@@ -23,9 +23,14 @@ There are some different with previous skeleton:
 4.6. If you have any problem, please create issue on Github or ask Eun Young :)))))))))))))))))))))))))))
 
 Execution model in host code:
-*	for(int = 0; i < nOctaves; ++i)
-*      			dowsizeimage();
-*			conv_oct();
-*			dog_oct(); 
-*		}  	
+for(int = 0; i < nOctaves; ++i)
+
+  dowsizeimage();
+	
+  conv_oct();
+		
+  dog_oct(); 
+  
+  }  	
+
 Hope it works!!   
