@@ -75,56 +75,65 @@
 #define MAX_FLEN 25
 #define WIDTH 320
 #define HEIGHT 240
-#define SCALES 6
+#define SCALES 5
 #define SHIFT_REG_WIDTH WIDHT // you can modify it 
-#define FILTER_LEN_SCALE_0 9
-#define FILTER_LEN_SCALE_1 11
-#define FILTER_LEN_SCALE_2 13
-#define FILTER_LEN_SCALE_3 15
-#define FILTER_LEN_SCALE_4 21
+#define FLEN0 9
+#define FLEN1 11
+#define FLEN2 13
+#define FLEN3 15
+#define FLEN4 21
 
+typedef float data_t 
 
 //// ON-CHIP GLOBAL VARIABLE DECLARATION ////
 
 // on-chip global memory for input image 
-global float _input_img[WIDTH*HEIGHT];
+global data_t _input_img[WIDTH*HEIGHT];
+global data_t _intm_img[WITH*HEIGHT];
 
-// on-chip global for gaussian filter
-// We can modify it by hardcoding the filter values in each kernel
-global float _gaussianFilter_scale_0[FILTER_LEN_SCALE_0*FILTER_LEN_SCALE_0];
-global float _gaussianFilter_scale_1[FILTER_LEN_SCALE_1*FILTER_LEN_SCALE_1];
-global float _gaussianFilter_scale_2[FILTER_LEN_SCALE_2*FILTER_LEN_SCALE_2];
-global float _gaussianFilter_scale_3[FILTER_LEN_SCALE_3*FILTER_LEN_SCALE_3];
-global float _gaussianFilter_scale_4[FILTER_LEN_SCALE_4*FILTER_LEN_SCALE_4];
 
 // on-chip global memory for output DoG
-global float _output_dog[WIDTH*HEIGHT];
+// We need 4 buffer to store 4 dog image. We need to discuss more about this because we cannot do 
+// this when image size increase. I'm having plan to use pipe as a buffer between computing unit and DRAM.
+// The idea is result will be written to pipe, and DMA module will read from that pipe and write to output
+// pointer.
 
-//// PIPE DECLARATION ////
+// how about defining _output_dog size as WIDHT (or other unit of size)
+// and whenever one line of dog image is calculated, move the output line of dog to DRAM
+// In this case, we need to consider synchronization problem.
+// we don't know each dog scales are finished calculation of one line of output at certain time 
+// oh, yes... due to this problem, it will be better to use pipe for synchronization. ㅋㅋ
+// you are right canh
+// - eyoh
+global data_t _output_dog_0[WIDTH*HEIGHT];
+global data_t _output_dog_1[WIDTH*HEIGHT];
+global data_t _output_dog_2[WIDTH*HEIGHT];
+global data_t _output_dog_3[WIDTH*HEIGHT];
 
-// for storing output of convolution module
 
-pipe float pipe_scale_0 __attribute__((xcl_reqd_pipe_depth(512)));
-pipe float pipe_scale_1 __attribute__((xcl_reqd_pipe_depth(256)));
-pipe float pipe_scale_2 __attribute__((xcl_reqd_pipe_depth(128)));
-pipe float pipe_scale_3 __attribute__((xcl_reqd_pipe_depth(64)));
-pipe float pipe_scale_4 __attribute__((xcl_reqd_pipe_depth(32)));
+// PIPE for storing output of convolution module
+
+pipe data_t pipe_scale_0 __attribute__((xcl_reqd_pipe_depth(128)));
+pipe data_t pipe_scale_1 __attribute__((xcl_reqd_pipe_depth(128)));
+pipe data_t pipe_scale_2 __attribute__((xcl_reqd_pipe_depth(128)));
+pipe data_t pipe_scale_3 __attribute__((xcl_reqd_pipe_depth(128)));
+pipe data_t pipe_scale_4 __attribute__((xcl_reqd_pipe_depth(128)));
 
 //// FUNCTION DECLARATION ////
-__kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void InputToOnchip(global float* input);
+// __kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void InputToOnchip(global data_t* input);
 
-__kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void FilterToOnchip_scale_0(global float* filter); // We can implement these functions for all scales in one kernel 
-__kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void FilterToOnchip_scale_1(global float* filter);
-__kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void FilterToOnchip_scale_2(global float* filter);
-__kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void FilterToOnchip_scale_3(global float* filter);
-__kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void FilterToOnchip_scale_4(global float* filter);
+// __kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void FilterToOnchip_scale_0(global data_t* filter); // We can implement these functions for all scales in one kernel 
+// __kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void FilterToOnchip_scale_1(global data_t* filter);
+// __kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void FilterToOnchip_scale_2(global data_t* filter);
+// __kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void FilterToOnchip_scale_3(global data_t* filter);
+// __kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void FilterToOnchip_scale_4(global data_t* filter);
 
-__kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void Shift_reg_begin();
-__kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void Shift_reg_loop();
-__kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void Shift_reg_end();
+// __kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void Shift_reg_begin();
+// __kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void Shift_reg_loop();
+// __kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void Shift_reg_end();
 
-//__kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void Build_DoG_pyramid(__global float* _output);
-__kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void conv_oct(/*__local float* Shift_reg*/);
+//__kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void Build_DoG_pyramid(__global data_t* _output);
+__kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void conv_oct();
 __kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void dog_oct();
 
 #endif
