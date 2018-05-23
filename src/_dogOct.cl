@@ -16,7 +16,7 @@ __kernel void dog_oct(   int height,
 
     __attribute__ ((xcl_pipeline_loop))
     DOG_LOOP_0: for(int i = 0; i < width*height; ++i){
-    	__local conv_data0,conv_data1,dog_data0;
+    	__local conv_data0,conv_data1,dog_data0; //this need to be tested more
 // Read from correcsponding pipes
     	read_pipe_block(pipe_scale_0,&conv_data0);
     	read_pipe_block(pipe_scale_1,&conv_data1);

@@ -140,7 +140,7 @@ pipe data_t pipe_scale_4 __attribute__((xcl_reqd_pipe_depth(128)));
 // __kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void Shift_reg_end();
 
 //__kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void Build_DoG_pyramid(__global data_t* _output);
-__kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void conv_oct();
+__kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void conv_oct(global data_t *input,int height,int width,bool from_bram);
 __kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void dog_oct(int height,int width,global data_t *output ); // Argument setting
 
 #endif
