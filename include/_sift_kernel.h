@@ -83,13 +83,13 @@
 #define FLEN3 15
 #define FLEN4 21
 
-typedef float data_t 
+typedef float data_t ;
 
 //// ON-CHIP GLOBAL VARIABLE DECLARATION ////
 
 // on-chip global memory for input image 
 global data_t _input_img[WIDTH*HEIGHT];
-global data_t _intm_img[WITH*HEIGHT];
+global data_t _intm_img[WIDTH*HEIGHT]; // typo correction WITH -> WIDTH
 
 
 // on-chip global memory for output DoG
@@ -113,10 +113,17 @@ global data_t _output_dog_3[WIDTH*HEIGHT];
 
 // PIPE for storing output of convolution module
 
+//Since a loop of Dog kernel needs outputs from two different convolution module,
+//convolution module for scale 1,2,3 must send data twice via pipe_scale_*_1
+//therefore i added three more pipes
+//-kclee
 pipe data_t pipe_scale_0 __attribute__((xcl_reqd_pipe_depth(128)));
 pipe data_t pipe_scale_1 __attribute__((xcl_reqd_pipe_depth(128)));
+pipe data_t pipe_scale_1_1 __attribute__((xcl_reqd_pipe_depth(128)));
 pipe data_t pipe_scale_2 __attribute__((xcl_reqd_pipe_depth(128)));
+pipe data_t pipe_scale_2_1 __attribute__((xcl_reqd_pipe_depth(128)));
 pipe data_t pipe_scale_3 __attribute__((xcl_reqd_pipe_depth(128)));
+pipe data_t pipe_scale_3_1 __attribute__((xcl_reqd_pipe_depth(128)));
 pipe data_t pipe_scale_4 __attribute__((xcl_reqd_pipe_depth(128)));
 
 //// FUNCTION DECLARATION ////
@@ -134,6 +141,6 @@ pipe data_t pipe_scale_4 __attribute__((xcl_reqd_pipe_depth(128)));
 
 //__kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void Build_DoG_pyramid(__global data_t* _output);
 __kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void conv_oct();
-__kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void dog_oct();
+__kernel __attribute__ ((xcl_req_work_group_size(1,1,1))) void dog_oct(int height,int width,global data_t *output ); // Argument setting
 
 #endif
