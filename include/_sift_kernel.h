@@ -116,14 +116,15 @@ global data_t _output_dog_3[WIDTH*HEIGHT];
 //Since a loop of Dog kernel needs outputs from two different convolution module,
 //convolution module for scale 1,2,3 must send data twice via pipe_scale_*_1
 //therefore i added three more pipes
+// -> fixed once more to use one loop and one register per data
 //-kclee
 pipe data_t pipe_scale_0 __attribute__((xcl_reqd_pipe_depth(128)));
 pipe data_t pipe_scale_1 __attribute__((xcl_reqd_pipe_depth(128)));
-pipe data_t pipe_scale_1_1 __attribute__((xcl_reqd_pipe_depth(128)));
+//pipe data_t pipe_scale_1_1 __attribute__((xcl_reqd_pipe_depth(128)));//
 pipe data_t pipe_scale_2 __attribute__((xcl_reqd_pipe_depth(128)));
-pipe data_t pipe_scale_2_1 __attribute__((xcl_reqd_pipe_depth(128)));
+//pipe data_t pipe_scale_2_1 __attribute__((xcl_reqd_pipe_depth(128)));//un-comment these 3 lines if you want to use multi-loops
 pipe data_t pipe_scale_3 __attribute__((xcl_reqd_pipe_depth(128)));
-pipe data_t pipe_scale_3_1 __attribute__((xcl_reqd_pipe_depth(128)));
+//pipe data_t pipe_scale_3_1 __attribute__((xcl_reqd_pipe_depth(128)));//
 pipe data_t pipe_scale_4 __attribute__((xcl_reqd_pipe_depth(128)));
 
 //// FUNCTION DECLARATION ////

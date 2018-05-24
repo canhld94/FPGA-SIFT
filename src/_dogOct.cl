@@ -13,21 +13,31 @@ __kernel void dog_oct(   int height,
                         global data_t *output 
                     )
 {
-
+	//foundout xcl_pipeline_loop has automatic dependency check
+	__local float conv_data0,conv_data1,conv_data2,conv_data3,conv_data4;
+	__local float dog_data0,dog_data1,dog_data2,dog_data3;
     __attribute__ ((xcl_pipeline_loop))
     DOG_LOOP_0: for(int i = 0; i < width*height; ++i){
-    	__local conv_data0,conv_data1,dog_data0; //this need to be tested more
 // Read from correcsponding pipes
     	read_pipe_block(pipe_scale_0,&conv_data0);
     	read_pipe_block(pipe_scale_1,&conv_data1);
+    	read_pipe_block(pipe_scale_2,&conv_data2);//
+    	read_pipe_block(pipe_scale_3,&conv_data3);//
+    	read_pipe_block(pipe_scale_4,&conv_data4);//
 // Subtraction
     	dog_data0 = conv_data0 - conv_data1;
+    	dog_data1 = conv_data1 - conv_data2;//
+    	dog_data2 = conv_data2 - conv_data3;//comment these 9 lines if you want to use multi-loop
+    	dog_data3 = conv_data3 - conv_data4;//
 // Write to correcsponding bram 
     	_output_dog_0[i] = dog_data0;
+    	_output_dog_1[i] = dog_data1;//
+    	_output_dog_2[i] = dog_data2;//
+    	_output_dog_3[i] = dog_data3;//
     }
+/*//below is for using multiple loops -kclee
     __attribute__ ((xcl_pipeline_loop))
     DOG_LOOP_1: for(int i = 0; i < width*height; ++i){
-    	__local conv_data1,conv_data2,dog_data1;
     	// Read from correcsponding pipes
     	    	read_pipe_block(pipe_scale_1_1,&conv_data1);
     	    	read_pipe_block(pipe_scale_2,&conv_data2);
@@ -38,7 +48,6 @@ __kernel void dog_oct(   int height,
     }
     __attribute__ ((xcl_pipeline_loop))
     DOG_LOOP_2: for(int i = 0; i < width*height; ++i){
-    	__local conv_data2,conv_data3,dog_data2;
     	// Read from correcsponding pipes
     	    	read_pipe_block(pipe_scale_2_1,&conv_data2);
     	    	read_pipe_block(pipe_scale_3,&conv_data3);
@@ -49,7 +58,6 @@ __kernel void dog_oct(   int height,
     }
     __attribute__ ((xcl_pipeline_loop))
     DOG_LOOP_3: for(int i = 0; i < width*height; ++i){
-    	__local conv_data3,conv_data4,dog_data3;
     	// Read from correcsponding pipes
     	    	read_pipe_block(pipe_scale_3_1,&conv_data3);
     	    	read_pipe_block(pipe_scale_4,&conv_data4);
@@ -58,6 +66,7 @@ __kernel void dog_oct(   int height,
     	// Write to correcsponding bram
     	    	_output_dog_3[i] = dog_data3;
     }
+*/
 // copy data to DRAM
     CopyOutputImageToDRAM(output, _output_dog_0, width, height);
     CopyOutputImageToDRAM(output + width*height, _output_dog_1, width, height);
