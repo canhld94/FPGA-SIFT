@@ -1,0 +1,55 @@
+===============================================================================
+Version:    xocc v2017.1_sdx (64-bit)
+Build:      SW Build 1915620 on Thu Jun 22 17:54:59 MDT 2017
+Copyright:  Copyright 1986-2017 Xilinx, Inc. All Rights Reserved.
+Created:    Tue Jul 10 12:34:34 2018
+===============================================================================
+
+-------------------------------------------------------------------------------
+Design Name:             sift
+Target Device:           xilinx:kcu1500:4ddr-xpr:4.0
+Target Clock:            200MHz
+Total number of kernels: 5
+-------------------------------------------------------------------------------
+
+Kernel Summary
+Kernel Name  Type  Target              OpenCL Library  Compute Units
+-----------  ----  ------------------  --------------  -------------
+gaussian_s4  clc   fpga0:OCL_REGION_0  sift            1
+gaussian_s3  clc   fpga0:OCL_REGION_0  sift            1
+gaussian_s0  clc   fpga0:OCL_REGION_0  sift            1
+gaussian_s2  clc   fpga0:OCL_REGION_0  sift            1
+gaussian_s1  clc   fpga0:OCL_REGION_0  sift            1
+
+
+-------------------------------------------------------------------------------
+OpenCL Binary:     sift
+Kernels mapped to: clc_region
+
+Timing Information (MHz)
+Compute Unit   Kernel Name  Module Name  Target Frequency  Estimated Frequency
+-------------  -----------  -----------  ----------------  -------------------
+gaussian_s0_1  gaussian_s0  gaussian_s0  300.300293        378.787872
+gaussian_s1_1  gaussian_s1  gaussian_s1  300.300293        378.787872
+gaussian_s2_1  gaussian_s2  gaussian_s2  300.300293        378.787872
+gaussian_s3_1  gaussian_s3  gaussian_s3  300.300293        378.787872
+gaussian_s4_1  gaussian_s4  gaussian_s4  300.300293        378.787872
+
+Latency Information (clock cycles)
+Compute Unit   Kernel Name  Module Name  Start Interval    Best Case  Avg Case  Worst Case
+-------------  -----------  -----------  ----------------  ---------  --------  ----------
+gaussian_s0_1  gaussian_s0  gaussian_s0  318 ~ 1073742140  317        undef     1073742139
+gaussian_s1_1  gaussian_s1  gaussian_s1  318 ~ 1073742140  317        undef     1073742139
+gaussian_s2_1  gaussian_s2  gaussian_s2  319 ~ 1073742141  318        undef     1073742140
+gaussian_s3_1  gaussian_s3  gaussian_s3  320 ~ 1073742142  319        undef     1073742141
+gaussian_s4_1  gaussian_s4  gaussian_s4  319 ~ 1073742141  318        undef     1073742140
+
+Area Information
+Compute Unit   Kernel Name  Module Name  FF     LUT    DSP  BRAM
+-------------  -----------  -----------  -----  -----  ---  ----
+gaussian_s0_1  gaussian_s0  gaussian_s0  15194  13247  60   40
+gaussian_s1_1  gaussian_s1  gaussian_s1  13686  9662   86   48
+gaussian_s2_1  gaussian_s2  gaussian_s2  22296  16662  154  64
+gaussian_s3_1  gaussian_s3  gaussian_s3  32817  26080  260  80
+gaussian_s4_1  gaussian_s4  gaussian_s4  52994  49349  326  104
+-------------------------------------------------------------------------------

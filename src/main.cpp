@@ -1,325 +1,182 @@
-/********************************************
-FPGA-SIFT using OpenCL
 
-:Network Computing Lab: (ncl.kaist.ac.kr)
-:last_update:	2018-05-15
-**********************************************/
+#include "../include/sift.hpp"
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <cstring>
-#include "myutil.h"
-#include "oclHelper.h"
-#include "bitmap.h"
-#include "sift.h"
+// Definition of gaussian pyramid and dog pyramid
 
-int main(int argc, char* argv[]){
 
-	int width, height = 128; //default img width height
-	cl_float *img;
-	oclHardware hardware;
-	oclSoftware software;
-	cl_kernel  mKernel_InputToOnchip,
-	     mKernel_FilterToOnchip_scale_0,
-	     mKernel_FilterToOnchip_scale_1,
-	     mKernel_FilterToOnchip_scale_2,
-	     mKernel_FilterToOnchip_scale_3,
-	     mKernel_FilterToOnchip_scale_4,
-	     mKernel_Shift_reg_begin,
-	     mKernel_Shift_reg_loop,
-	     mKernel_Shift_reg_end,
-	     mKernel_conv_oct,
-	     mKernel_dog_oct,
-	     mKernel_OutputFromOnchip;
-	int flen[SCALES] = {9, 11, 13, 15, 21};
+// Definition of Opencl mess
+cl::Device device;
+cl::Context context;
+cl::CommandQueue q; // use 1 out of oder queue
+//std::vector<cl::CommandQueue> q; // 1 for htod, 1 for dtoh, 1 for kernel execution
+cl::Program program;
+std::vector<cl::Kernel> gaussian(nScales);
 
-	// TARGET_DEVICE macro needs to be passed from gcc command line
-	const char * target_device_name = TARGET_DEVICE;
-	std::cout << target_device_name;
+// Definition of memory object in FPGA
+cl::Buffer base;
+std::vector<cl::Buffer> gpyr_dev;
 
-	// Running application exception handling
-	if (argc != 3){
-		std::cout 	<< "Usage " 
-					<< argv[0] 
-					<< " input bitmap> <xclbin> \n";
-		return -1;
+void fpgaConfig(){
+    // find Xilinx device and program FPGA
+    std::vector<cl::Device> devices = xcl::get_xil_devices();
+    device = devices[0];
+    std::string device_name = device.getInfo<CL_DEVICE_NAME>();
+    std::cout << "Found Device = " << device_name.c_str() << std::endl;
+	std::string binaryFile = "sift.xclbin";
+    cl::Program::Binaries bins = xcl::import_binary_file(binaryFile);
+    
+    std::cout << "Imported binary" << std::endl;
+    // create context and command queue
+    context = cl::Context(device);
+    q = cl::CommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE | CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
+    // creat program and kernel
+    devices.resize(1);
+    program = cl::Program(context, devices, bins);
+    gaussian = {cl::Kernel(program,"gaussian_s0"), cl::Kernel(program,"gaussian_s1"),\
+                cl::Kernel(program,"gaussian_s2"), cl::Kernel(program,"gaussian_s3"),\
+                cl::Kernel(program,"gaussian_s4") };
+    std::cout << "FPGA config done" << std::endl;
+
+}
+
+void hostPreAllocation(){
+    gpyr.resize(nOctaves*nScales);
+    for(int o = 0; o < nOctaves; ++o){
+        for(int i = 0; i < nScales; ++i){
+            Mat &img = gpyr[o*nScales + i];
+        	img = cv::Mat(ROWS >> o, COLS >> o, CV_16SC1);
+        }
+    }
+}
+
+
+void fpgaPreAllocation(){
+    // opencl extern flag use mutiple ddr bank
+    cl_mem_ext_ptr_t inExt;
+    std::vector<cl_mem_ext_ptr_t> outExt(4); // 4 ddr bank
+    inExt.flags = (1 << 8); // DDR BANK 0
+    inExt.obj = 0;
+    inExt.param = 0;
+    for( int i = 0; i < 4; ++i){
+        outExt[i].flags = (1 << (8+i)); // DDR bank i
+    }
+    // alocate base image
+    int size_in_bytes = ROWS*COLS*sizeof(pixel_t);
+    base = cl::Buffer(context, CL_MEM_READ_WRITE | CL_MEM_EXT_PTR_XILINX, size_in_bytes, &inExt);
+    for(int i = 0; i < nScales; ++i){
+    	int bank = i % 4;
+    	gpyr_dev.push_back(cl::Buffer(context, CL_MEM_WRITE_ONLY | CL_MEM_EXT_PTR_XILINX, size_in_bytes, &outExt[bank]));
+    }
+}
+void setKernelArg(){
+	for(int i = 0; i < nScales; ++i){
+		int narg = 0;
+		gaussian[i].setArg(narg++, base);
+		if(i == 0) {
+			gaussian[i].setArg(narg++, base);
+			gaussian[i].setArg(narg++, ROWS);
+			gaussian[i].setArg(narg++, COLS);
+			gaussian[i].setArg(narg++, 0);
+		}
+		else gaussian[i].setArg(narg++, gpyr_dev[i]);
 	}
+}
 
-	// Read the bit map file into memory and allocate memory for the final image
-	std::cout 	<< "\n***************\n" 
-				<< "Reading input imeage ... \n" 
-				<< "***************\n";
-	const char* inputFileName = argv[1];
-	const char* xclbinFilename = argv[2];
-	img = readImgtoFloat(inputFileName,&width, &height);
+void releaseApplication(){
+	// delete host memory
+	gpyr.clear();
+	// release all OpenCL object
+	// release memory buffer
+	gpyr_dev.clear();
+	base.~Wrapper();
+	// release kernel
+	gaussian.clear();
+	// release command queue
+	q.~Wrapper();
+	// release program
+	program.~Wrapper();
+	// release context
+	context.~Wrapper();
+	// release device
+	device.~Wrapper();
+}
 
+void readme(){
+	std::cout<< "Usage: ./sift <scene> <object> " << std::endl;
+}
 
-	// Set up OpenCL hardware and software contructs
-	std::cout << "\n***************\n" ;
-	std::cout << "Setting up OpenCL hardware and software ... \n" << "***************\n";
-	cl_int err = 0;
+void readImage(Mat& img, Mat& gray, char* filename, bool resized){
+	img = imread(filename);
+	if(!img.data)
+	{ std::cout<< " --(!) Error reading images " << std::endl; exit(0); }
+	if(resized) resize(img, img, Size(ROWS,COLS));
+	cvtColor(img, gray, cv::COLOR_RGB2GRAY);
+	gray.convertTo(gray, DATATYPE);
+	return;
+}
 
-	hardware  = getOclHardware(CL_DEVICE_TYPE_ACCELERATOR, target_device_name);
-	std::cout << hardware.mContext;
+int main( int argc, char** argv )
+{
+    if( argc != 3 )
+    { readme(); return -1; }
+    hostPreAllocation();
+    fpgaConfig();
+    fpgaPreAllocation();
+    setKernelArg();
 
-	memset(&software, 0, sizeof(oclSoftware));
-	strcpy(software.mFileName, xclbinFilename);
-	strcpy(software.mCompileOptions, "-g -Wall");
+    std::cout << "Start computing" << std::endl;
 
-	getOclSoftware(software,hardware);
+    Mat img0, img1; // image
+    Mat gray0, gray1;
+    std::vector<KeyPoint> keypoints0, keypoints1; // keypoints to store keypoints
+    Mat descriptors0, descriptors1; // image descriptor
+    readImage(img0, gray0 , argv[1], 1);
+    readImage(img1, gray1, argv[2], 0);
+    SIFT_NCL_CPU(gray1, keypoints1, descriptors1);
+    SIFT_NCL(gray0, keypoints0, descriptors0);
+    BFMatcher matcher(NORM_L2);
+    std::vector<std::vector<DMatch> > matches;
+    matcher.knnMatch(descriptors1, descriptors0, matches, 2);
+    std::vector<DMatch> good_matches;
+    good_matches.reserve(matches.size());
+    for (size_t i = 0; i < matches.size(); ++i){
+        if (matches[i].size() < 2)
+                    continue;
 
-	// Create Kernels
-	clCreateKernel_withErrorCheck(mKernel_InputToOnchip, software, "InputToOnchip");
-	clCreateKernel_withErrorCheck(mKernel_FilterToOnchip_scale_0, software, "FilterToOnchip_scale_0");
-	clCreateKernel_withErrorCheck(mKernel_FilterToOnchip_scale_1, software, "FilterToOnchip_scale_1");
-	clCreateKernel_withErrorCheck(mKernel_FilterToOnchip_scale_2, software, "FilterToOnchip_scale_2");
-	clCreateKernel_withErrorCheck(mKernel_FilterToOnchip_scale_3, software, "FilterToOnchip_scale_3");
-	clCreateKernel_withErrorCheck(mKernel_FilterToOnchip_scale_4, software, "FilterToOnchip_scale_4");
-	clCreateKernel_withErrorCheck(mKernel_Shift_reg_begin, software, "Shift_reg_begin");
-	clCreateKernel_withErrorCheck(mKernel_Shift_reg_loop, software, "Shift_reg_loop");
-	clCreateKernel_withErrorCheck(mKernel_Shift_reg_end, software, "Shift_reg_end");
-	clCreateKernel_withErrorCheck(mKernel_conv_oct, software, "conv_oct");
-	clCreateKernel_withErrorCheck(mKernel_dog_oct, software, "dog_oct");
-	clCreateKernel_withErrorCheck(mKernel_OutputFromOnchip, software, "OutputFromOnchip");
+        const DMatch &m1 = matches[i][0];
+        const DMatch &m2 = matches[i][1];
 
-	// Initialize OpenCL buffers with pointers to allocated memory
-	cl_mem imageToDevice;
-	cl_mem imageFromDevice;
-	cl_mem DoGsFromDevice;
-	std::map<int, cl_mem> gaussianFiltersToDevice;
-	std::map<int, float*> gaussianFilters;
-	float *DoGPyramid = new float[SCALES*height*width];
+        if(m1.distance <= 0.8*m2.distance)
+        good_matches.push_back(m1);
+    }
+    Mat img_matches;
+    drawMatches(img1, keypoints1, img0, keypoints0, good_matches, img_matches, Scalar(0, 0, 255), Scalar::all(-1),std::vector<char>(), DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
+    std::vector< Point2f >  obj;
+    std::vector< Point2f >  scene;
 
-	// prepare
-	prepareFilter(gaussianFilters, gaussianFiltersToDevice, hardware);
+    for( unsigned int i = 0; i < good_matches.size(); i++ ){
+        //-- Get the keypoints from the good matches
+        obj.push_back( keypoints1[ good_matches[i].queryIdx ].pt );
+        scene.push_back( keypoints0[ good_matches[i].trainIdx ].pt );
+    }
 
+    Mat H = findHomography( obj, scene, RANSAC );
 
-	// Create Buffer Image to Device Buffer
-	imageToDevice = clCreateBuffer(hardware.mContext,
-		CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
-		width * height * sizeof(float),
-		img,
-		&err);
-	checkErrorStatus(err, "Unable to create write buffer");
+    //-- Get the corners from the image_1 ( the object to be "detected" )
+    std::vector< Point2f > obj_corners(4);
+    obj_corners[0] = cvPoint(0,0); obj_corners[1] = cvPoint( img1.cols, 0 );
+    obj_corners[2] = cvPoint( img1.cols, img1.rows ); obj_corners[3] = cvPoint( 0, img1.rows );
+    std::vector< Point2f > scene_corners(4);
 
-	// Create Buffer DoG From Device Buffer
-	DoGsFromDevice = clCreateBuffer(hardware.mContext,
-				   CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR,
-				   SCALES * width * height * sizeof(float),
-				   DoGPyramid,
-				   &err) ;
-	checkErrorStatus(err, "Unable to create write buffer") ;
+    perspectiveTransform( obj_corners, scene_corners, H);
 
-	// Send the image to the hardware
-	std::cout << "Writing input image to buffer ... \n";
-	err = clEnqueueWriteBuffer(hardware.mQueue,
-		imageToDevice,
-		CL_TRUE,
-		0,
-		width * height * sizeof(int),
-		img,
-		0,
-		NULL,
-		NULL);
-	checkErrorStatus(err, "Unable to enqueue write buffer");
-
-  	// Send the gaussian filters to the hardware
-  	std::cout << "Writing filter to buffer...\n";
-  	for(int i=0; i<SCALES; i++){
-		int _flen = flen[i];
-		err = clEnqueueWriteBuffer(hardware.IOQueue, gaussianFiltersToDevice[i], CL_TRUE, 0, _flen*_flen*sizeof(float), gaussianFilters[i], 0, NULL, NULL);
-		checkErrorStatus(err, "Unable to enqueue write buffer : gaussianFiltersToDevice");
-	}
-
-	// Pass the arguments to the kernel
-  	char * temp_string;
-  	temp_string = new char[129];
-  	printf("Set argument for InputToOnchip kernel...\n");
-  	strcpy(temp_string, "%cl");
-  	setArguments(mKernel_InputToOnchip, temp_string, &imageToDevice);
-	
-  	printf("Set argument for FilterToOnchip_scale_0 kernel...\n");
-  	strcpy(temp_string, "%cl");
-  	setArguments(mKernel_FilterToOnchip_scale_0, temp_string, &gaussianFiltersToDevice[0]);
-
-  	printf("Set argument for FilterToOnchip_sclae_1 kernel...\n");
-  	strcpy(temp_string, "%cl");
-  	setArguments(mKernel_FilterToOnchip_scale_1, temp_string, &gaussianFiltersToDevice[1]);
-	
-  	printf("Set argument for FilterToOnchip_scale_2 kernel...\n");
-  	strcpy(temp_string, "%cl");
-  	setArguments(mKernel_FilterToOnchip_scale_2, temp_string, &gaussianFiltersToDevice[2]);
-	
-  	printf("Set argument for FilterToOnchip_scale_3 kernel...\n");
-  	strcpy(temp_string, "%cl");
-  	setArguments(mKernel_FilterToOnchip_scale_3, temp_string, &gaussianFiltersToDevice[3]);
-	
-  	printf("Set argument for FilterToOnchip_scale_4 kernel...\n");
-  	strcpy(temp_string, "%cl");
-  	setArguments(mKernel_FilterToOnchip_scale_4, temp_string, &gaussianFiltersToDevice[4]);
-	
-  	printf("Set argument for OutputFromOnchip kernel...\n");
-  	strcpy(temp_string, "%cl");
-  	setArguments(mKernel_OutputFromOnchip, temp_string, &DoGsFromDevice);
-	
-  	// Define iteration space 
-  	size_t globalSize[3] = { 1, 1, 1 } ;
-  	size_t localSize[3] = { 1, 1, 1} ;
-  	cl_event seq_complete ;
-	
-  	// Actually start the kernels on the hardware
-  	printf("Start the InputToOnchip kernel...\n");
-  	err = clEnqueueNDRangeKernel(hardware.mQueue,
-					mKernel_InputToOnchip,
-					1,
-					NULL,
-					globalSize,
-					localSize,
-					0,
-					NULL,
-					&seq_complete);
-  	checkErrorStatus(err, "Unable to enqueue InputToOnchip...\n");
-	
-  	printf("Start the FilterToOnchip kernel...\n");
-  	err = clEnqueueNDRangeKernel(hardware.mQueue,
-			       	mKernel_FilterToOnchip_scale_0,
-			       	1,
-			       	NULL,
-			       	globalSize,
-			       	localSize,
-			       	0,
-			       	NULL,
-			       	&seq_complete) ;
-  	checkErrorStatus(err, "Unable to enqueue FilterToOnchip_scale_0...\n") ;
-	
-  	printf("Start the FilterToOnchip_scale_1 kernel ...\n");
-  	err = clEnqueueNDRangeKernel(hardware.mQueue,
-					mKernel_FilterToOnchip_scale_1,
-					1,
-					NULL,
-					globalSize,
-					localSize,
-					0,
-					NULL,
-					&seq_complete);
-  	checkErrorStatus(err, "Unable to enqueue FilterToOnchip_scale_1...\n");
-	
-  	printf("Start the Shift_reg_begin kernel ...\n");
-  	err = clEnqueueNDRangeKernel(hardware.mQueue,
-					mKernel_Shift_reg_begin,
-					1,
-					NULL,
-					globalSize,
-					localSize,
-					0,
-					NULL,
-					&seq_complete);
-  	checkErrorStatus(err, "Unable to enqueue Shift_reg_begin...\n");
- 	
-  	printf("Start the Shift_reg_loop kernel ...\n");
-  	err = clEnqueueNDRangeKernel(hardware.mQueue,
-					mKernel_Shift_reg_loop,
-					1,
-					NULL,
-					globalSize,
-					localSize,
-					0,
-					NULL,
-					&seq_complete);
-  	checkErrorStatus(err, "Unable to enqueue Shift_reg_loop...\n");
-	
-  	printf("Start the Shift_reg_end kernel ...\n");
-  	err = clEnqueueNDRangeKernel(hardware.mQueue,
-					mKernel_Shift_reg_end,
-					1,
-					NULL,
-					globalSize,
-					localSize,
-					0,
-					NULL,
-					&seq_complete);
-  	checkErrorStatus(err, "Unable to enqueue Shift_reg_end...\n");
-	
-  	printf("Start the conv_oct kernel ...\n");
-  	err = clEnqueueNDRangeKernel(hardware.mQueue,
-					mKernel_conv_oct,
-					1,
-					NULL,
-					globalSize,
-					localSize,
-					0,
-					NULL,
-					&seq_complete);
-  	checkErrorStatus(err, "Unable to enqueue conv_oct...\n");
-	
-  	printf("Start the dog_oct kernel ...\n");
-  	err = clEnqueueNDRangeKernel(hardware.mQueue,
-					mKernel_dog_oct,
-					1,
-					NULL,
-					globalSize,
-					localSize,
-					0,
-					NULL,
-					&seq_complete);
-  	checkErrorStatus(err, "Unable to enqueue dog_oct...\n");
-	
-  	printf("Start the OutputFromOnchip kernel ...\n");
-  	err = clEnqueueNDRangeKernel(hardware.mQueue,
-					mKernel_OutputFromOnchip,
-					1,
-					NULL,
-					globalSize,
-					localSize,
-					0,
-					NULL,
-					&seq_complete);
-  	checkErrorStatus(err, "Unable to enqueue OutputFromOnchip...\n");
-	
-	
-  	// Wait for kernel to finish
-  	// Read back the image from the kernel
-  	std::cout << "Reading output DoG...\n";
-  	err = clEnqueueReadBuffer(hardware.IOQueue,
-			    	DoGsFromDevice,
-			    	CL_TRUE,
-			    	0,
-			    	SCALES * width * height * sizeof(float),
-			    	DoGPyramid,
-			    	0,
-			    	NULL,
-			    	&seq_complete) ;
-	
-  	checkErrorStatus(err, "Unable to enqueue read buffer") ;
-	
-  	clWaitForEvents(1, &seq_complete) ;
-	
-  	// Write the final image to disk
-  	//image.writeBitmapFile(outImage) ;
-	
-  	for (int i=0; i<SCALES; i++){
-	  	clReleaseMemObject(gaussianFiltersToDevice[i]);
-  	}
-  	clReleaseMemObject(imageToDevice);
-  	clReleaseMemObject(DoGsFromDevice);
-  	
-  	clReleaseKernel(mKernel_InputToOnchip);
-  	clReleaseKernel(mKernel_FilterToOnchip_scale_0);
-  	clReleaseKernel(mKernel_FilterToOnchip_scale_1);
-  	clReleaseKernel(mKernel_FilterToOnchip_scale_2);
-  	clReleaseKernel(mKernel_FilterToOnchip_scale_3);
-  	clReleaseKernel(mKernel_FilterToOnchip_scale_4);
-  	clReleaseKernel(mKernel_Shift_reg_begin);
-  	clReleaseKernel(mKernel_Shift_reg_loop);
-  	clReleaseKernel(mKernel_Shift_reg_end);
-  	clReleaseKernel(mKernel_conv_oct);
-  	clReleaseKernel(mKernel_dog_oct);
-  	clReleaseKernel(mKernel_OutputFromOnchip);
-  	release(software) ;
-  	release(hardware) ;
-  	return 0 ;
+//-- Draw lines between the corners (the mapped object in the scene - image_2 )
+    line( img_matches, scene_corners[0] + Point2f( img1.cols, 0), scene_corners[1] + Point2f( img1.cols, 0), Scalar(0, 255, 0), 4 );
+    line( img_matches, scene_corners[1] + Point2f( img1.cols, 0), scene_corners[2] + Point2f( img1.cols, 0), Scalar( 0, 255, 0), 4 );
+    line( img_matches, scene_corners[2] + Point2f( img1.cols, 0), scene_corners[3] + Point2f( img1.cols, 0), Scalar( 0, 255, 0), 4 );
+    line( img_matches, scene_corners[3] + Point2f( img1.cols, 0), scene_corners[0] + Point2f( img1.cols, 0), Scalar( 0, 255, 0), 4 );
+    imwrite("matched.jpg", img_matches);
+    std::cout << "done!" << std::endl;
+	releaseApplication();
+    return 0;
 }
