@@ -25,12 +25,12 @@
 
 #### How to build the code
 - Requirement: OpenCV version >= 3.2; SDAccel version >= 2017.1
-- make options:
-...exe: build the host code
-...xclbin: build the kernel code
-...emconf: build the emulation configure file
-...clean: clean the host code
-...cleanall: clean everything
+- make options:  
+>>>exe: build the host code  
+>>>xclbin: build the kernel code  
+>>>emconf: build the emulation configure file  
+>>>clean: clean the host code  
+>>>cleanall: clean everything  
 
 ### Release 0.1 - 20180710
 
