@@ -41,6 +41,3 @@
 - FPGA processing time only: ~ 8ms
 - Total time for building Gaussian pyramid and DoG pyramid: ~24ms
 
-best regards,
-
-ejYang (yejyang@kaist.ac.kr)
