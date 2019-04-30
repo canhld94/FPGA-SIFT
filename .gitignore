@@ -1,1 +1,6 @@
-bin/
+/bin/*.jpg
+/bin/*.csv
+/bin/*.html
+/bin/*.exe
+/bin/*.xtxt
+/bin/*.xclbin
